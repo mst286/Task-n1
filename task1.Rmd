@@ -1,0 +1,106 @@
+---
+title: "task n1"
+author: "mattia storero"
+date: "18/9/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+```
+
+#load the data
+```{r}
+url1 <- "http://data.ssb.no/api/v0/dataset/95274.csv?lang=no"
+url2 <- "http://data.ssb.no/api/v0/dataset/95276.csv?lang=no"
+data1 <- read.csv(url1, sep = ";", dec = ",")
+data2 <- read.csv(url2, sep = ";", dec = ",")
+```
+
+
+#change the names of the columns
+```{r}
+colnames <- c("region", "date", "variable", "value")
+colnames(data1) <- colnames
+colnames(data2) <- colnames
+```
+
+#from character to date format
+
+```{r}
+library(lubridate)
+data1 <- data1 %>% mutate(date = gsub("M", "01", date)) %>% mutate (date =ydm(date))
+data2 <- data2 %>% mutate(date = gsub("M", "01", date)) %>% mutate (date =ydm(date))
+
+```
+
+#recode Norwegian labels into English
+
+```{r}
+levels(data1$variable)
+data1 <- data1 %>% mutate(variable = recode(variable, "Kapasitetsutnytting av senger (prosent)" = "Beds percentage capacity utilization", "Kapasitetsutnytting av rom (prosent)" = "Rooms percentage capacity utilization", "Pris per rom (kr)"  = "Price per room"))
+
+data2 <- data2 %>% mutate(variable = recode(variable, "Kapasitetsutnytting av senger (prosent)" = "Beds percentage capacity utilization", "Kapasitetsutnytting av rom (prosent)" = "Rooms percentage capacity utilization", "Pris per rom (kr)"  = "Price per room"))
+
+data1$value[data1$value == 0] <- NA
+data2$value[data2$value == 0] <- NA
+
+
+```
+
+#merge 2 dataframes
+
+```{r}
+data1 <- data1 %>% mutate(region = as.character(region), 
+                          value = as.numeric(value))
+
+data2 <- data2 %>% mutate(region = as.character(region), 
+                          value = as.numeric(value))
+
+total <- merge(data1,data2,by=c("date", "variable"))
+
+
+
+```
+
+
+#calculate difference between county average room price and national average room price per month
+
+```{r}
+total <- total %>% mutate(value_deduct = value.x - value.y)
+means_region <- total %>% filter(variable == "Price per room") %>% group_by(region.x) %>% summarise(mean = mean(value_deduct ,na.rm = TRUE))
+
+means_years <- total %>% filter(variable == "Price per room") %>% group_by(lubridate::year(date)) %>% summarise(mean = mean(value_deduct, na.rm = TRUE))
+
+
+```
+#make the plot
+```{r}
+total %>%
+  filter(variable == "Price per room") %>%
+  filter(region.x == "19 Troms - Romsa") %>%
+  ggplot(aes(x = date,y = value_deduct)) +
+  geom_line(col = "blue") 
+
+
+
+```
+
+
+
+
+#question
+```{r}
+library(reshape2)
+dat_expand <- dcast(total, date + region.x ~ variable, value.var = "value.x")
+names(dat_expand) [3:5] <- c ("roomCap", "bedCap","priceRoom")
+coler_county <- dat_expand %>%
+  filter(date >= as.Date("2010-01-01")) %>%
+  group_by(region.x) %>%
+  summarise(cor = cor(x =roomCap, y=priceRoom, use = "pairwise.complete.obs", method = "pearson"))
+
+```
+
+
+

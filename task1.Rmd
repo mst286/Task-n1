@@ -1,6 +1,6 @@
 ---
 title: "task n1"
-author: "mattia storero"
+author: "Mattia Storero"
 date: "18/9/2019"
 output: html_document
 ---
@@ -8,10 +8,17 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
-```
+library(ggpubr)
+library(reshape2)
+library(knitr)
+library(kableExtra)
 
+```
+## Background
+Two different data frames were taken from "http://data.ssb.no/api/v0/dataset/". The first contained data related to each specific county. The second one contained data of the aggregate. The data were organized in 4 variables, merged, selected and analysed. 
+```{r load,include=FALSE}
 #load the data
-```{r}
+
 url1 <- "http://data.ssb.no/api/v0/dataset/95274.csv?lang=no"
 url2 <- "http://data.ssb.no/api/v0/dataset/95276.csv?lang=no"
 data1 <- read.csv(url1, sep = ";", dec = ",")
@@ -19,25 +26,32 @@ data2 <- read.csv(url2, sep = ";", dec = ",")
 ```
 
 
+```{r rename, include=FALSE}
 #change the names of the columns
-```{r}
+
+
 colnames <- c("region", "date", "variable", "value")
 colnames(data1) <- colnames
 colnames(data2) <- colnames
 ```
 
+
+```{r convert, include=FALSE}
 #from character to date format
 
-```{r}
+
 library(lubridate)
 data1 <- data1 %>% mutate(date = gsub("M", "01", date)) %>% mutate (date =ydm(date))
 data2 <- data2 %>% mutate(date = gsub("M", "01", date)) %>% mutate (date =ydm(date))
 
 ```
 
+
+```{r recode, include=FALSE}
 #recode Norwegian labels into English
 
-```{r}
+
+
 levels(data1$variable)
 data1 <- data1 %>% mutate(variable = recode(variable, "Kapasitetsutnytting av senger (prosent)" = "Beds percentage capacity utilization", "Kapasitetsutnytting av rom (prosent)" = "Rooms percentage capacity utilization", "Pris per rom (kr)"  = "Price per room"))
 
@@ -49,9 +63,11 @@ data2$value[data2$value == 0] <- NA
 
 ```
 
+
+```{r merge, include=FALSE}
 #merge 2 dataframes
 
-```{r}
+
 data1 <- data1 %>% mutate(region = as.character(region), 
                           value = as.numeric(value))
 
@@ -63,36 +79,77 @@ total <- merge(data1,data2,by=c("date", "variable"))
 
 
 ```
+## Analysis
+Databases were organized in order to point out and identify the year and the county with the highest positive and negative difference. To make it possible, data were merged and the difference between county average room price and national average room price per month was calculated. It is possible to see that Svalbard presents the highest positive difference while Oppland presents the highest negative one. That brings to the conclusion that Svalbard is the cheapest region and Oppland the most expensive one. As regards years, it is easy to identify that 2008 represents the cheapest year, while 2019 represents the most expensive one.
 
 
-#calculate difference between county average room price and national average room price per month
+```{r, include=FALSE}
+#calculate difference between county average room price and national average room price per month and identify the year and county with the highest positive and negative difference
 
-```{r}
 total <- total %>% mutate(value_deduct = value.x - value.y)
 means_region <- total %>% filter(variable == "Price per room") %>% group_by(region.x) %>% summarise(mean = mean(value_deduct ,na.rm = TRUE))
 
 means_years <- total %>% filter(variable == "Price per room") %>% group_by(lubridate::year(date)) %>% summarise(mean = mean(value_deduct, na.rm = TRUE))
 
+max_region <- gsub("\\d", "",means_region[means_region$mean==max(means_region$mean),"region.x"])
+min_region <- gsub("\\d", "",means_region[means_region$mean==min(means_region$mean),"region.x"])
+
+
+max_year_vec <- means_years$mean==max(means_years$mean, na.rm=T)
+max_year_vec[is.na(max_year_vec)] <- F
+max_year <- means_years[max_year_vec,"lubridate::year(date)"]
+min_year_vec <- means_years$mean==min(means_years$mean, na.rm=T)
+min_year_vec[is.na(min_year_vec)] <- F
+min_year <- means_years[min_year_vec,"lubridate::year(date)"]
+
+max_region
+min_region
+max_year
+min_year
 
 ```
+
+```{r, include=FALSE}
+max_region
+min_region
+max_year
+min_year
+```
+
+
+
+
+
+To make it clearer, this plot contains the monthly price difference for Troms county from 1999 until today. It's interesting to notice that the fluctuations of the differences increase year on year.
+
+
+```{r, echo=FALSE, warning = FALSE}
 #make the plot
-```{r}
+
+
 total %>%
   filter(variable == "Price per room") %>%
   filter(region.x == "19 Troms - Romsa") %>%
-  ggplot(aes(x = date,y = value_deduct)) +
-  geom_line(col = "blue") 
+  ggplot(aes(x = date,y = value_deduct, cel.axis = 0.1)) +
+  geom_line(col = "blue") + ggtitle("Difference between county average room price and the national average") + 
+  xlab("Date") + 
+  ylab("Price per Room in relation with the National Average") + 
+  scale_x_date(breaks='2 years', 
+               limits = c(as.Date("1999-01-01"),Sys.Date())) 
+
+
 
 
 
 ```
 
+The last point of the task was to individuate if there was any relationship (correlation) between room capacity and price since January 2010. To make it possible, data were selected and put in this table organized by regions.
 
 
-
+```{r, echo=FALSE, warning=FALSE}
 #question
-```{r}
-library(reshape2)
+
+
 dat_expand <- dcast(total, date + region.x ~ variable, value.var = "value.x")
 names(dat_expand) [3:5] <- c ("roomCap", "bedCap","priceRoom")
 coler_county <- dat_expand %>%
@@ -100,7 +157,24 @@ coler_county <- dat_expand %>%
   group_by(region.x) %>%
   summarise(cor = cor(x =roomCap, y=priceRoom, use = "pairwise.complete.obs", method = "pearson"))
 
+
+
 ```
 
+```{r, echo=FALSE, warning=FALSE}
+kable(coler_county) %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"))
+
+```
+In addition, in order to evidence the correlation between the two variables this plot was added.
+
+```{r, echo=FALSE, warning=FALSE}
+
+ggscatter(dat_expand %>%
+  filter(date >= as.Date("2010-01-01")), x = "roomCap", y = "priceRoom", 
+          add = "reg.line", conf.int = TRUE, 
+          cor.coef = TRUE, cor.method = "pearson",
+          xlab = "Room Capacity", ylab = "Price per room")
+```
 
 
